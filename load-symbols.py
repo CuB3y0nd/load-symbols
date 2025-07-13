@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 
-import gdb
+import argparse
 import os
 
+import gdb
 
 CRE = "\x1b[0;31m"
 CGR = "\x1b[0;32m"
 CYW = "\x1b[0;33m"
 CPR = "\x1b[0;35m"
 CNC = "\x1b[0m"
+
+
+PARSER = argparse.ArgumentParser(
+    prog="load-symbols",
+    description="Recursively load all symbol files from a directory and its subdirectories.",
+)
+PARSER.add_argument("path", help="Path to the directory containing symbol files.")
 
 
 def load_debug_symbols(path):
@@ -36,27 +44,17 @@ class LoadSymbolsCommand(gdb.Command):
         super().__init__("load-symbols", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
-        arg = arg.strip()
-
-        if arg in ("-h", "--help") or not arg:
-            gdb.write("""usage: load-symbols [-h] [path]
-
-Recursively load all symbol files from a directory and its subdirectories.
-
-positional arguments:
-  path        The folder path of debug symbols you want to load.
-
-options:
-  -h, --help  show this help message and exit
-""")
+        try:
+            args = PARSER.parse_args(arg.split())
+        except SystemExit:
             return
 
-        path = os.path.abspath(arg)
+        path = os.path.abspath(args.path)
 
-        if not os.path.exists(path) or not os.path.isdir(path):
+        if not os.path.isdir(path):
             gdb.write(
                 f"""{CRE}load-symbols: path does not exist: {CPR}'{path}'
-{CYW}No debug symbols is loaded.{CNC}
+{CYW}No debug symbols are loaded.{CNC}
 """
             )
             return
