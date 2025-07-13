@@ -9,6 +9,7 @@ CRE = "\x1b[0;31m"
 CGR = "\x1b[0;32m"
 CYW = "\x1b[0;33m"
 CPR = "\x1b[0;35m"
+CAQ = "\x1b[0;36m"
 CNC = "\x1b[0m"
 
 
@@ -20,11 +21,13 @@ PARSER.add_argument("path", help="Path to the directory containing symbol files.
 
 
 def load_debug_symbols(path):
+    loaded_cnt = 0
+
     try:
         items = os.listdir(path)
     except Exception as e:
         gdb.write(f"{CRE}Cannot list directory: {e}{CNC}\n")
-        return
+        return 0
 
     for item in items:
         item_path = os.path.join(path, item)
@@ -33,10 +36,13 @@ def load_debug_symbols(path):
             try:
                 gdb.execute(f"add-symbol-file {item_path}", to_string=True)
                 gdb.write(f"{CGR}Loaded symbols from {CPR}'{item_path}'{CNC}\n")
+
+                loaded_cnt += 1
             except gdb.error as e:
                 gdb.write(f"{CRE}{str(e).replace('`', "'")}{CNC}\n")
         elif os.path.isdir(item_path):
-            load_debug_symbols(item_path)
+            loaded_cnt += load_debug_symbols(item_path)
+    return loaded_cnt
 
 
 class LoadSymbolsCommand(gdb.Command):
@@ -59,7 +65,12 @@ class LoadSymbolsCommand(gdb.Command):
             )
             return
 
-        load_debug_symbols(path)
+        loaded_cnt = load_debug_symbols(path)
+
+        if loaded_cnt == 0:
+            gdb.write(f"{CYW}No symbol files were found in: {CPR}'{path}'{CNC}\n")
+        else:
+            gdb.write(f"{CAQ}Total loaded {CYW}{loaded_cnt} {CAQ}symbol files.{CNC}\n")
 
 
 LoadSymbolsCommand()
