@@ -26,8 +26,12 @@ def load_debug_symbols(path):
     try:
         items = os.listdir(path)
     except Exception as e:
-        gdb.write(f"{CRE}Cannot list directory: {e}{CNC}\n")
-        return 0
+        gdb.write(
+            f"""{CRE}Cannot list directory: {e}{CNC}
+{CYW}No debug symbols are loaded.{CNC}
+"""
+        )
+        return None
 
     for item in items:
         item_path = os.path.join(path, item)
@@ -41,7 +45,7 @@ def load_debug_symbols(path):
             except gdb.error as e:
                 gdb.write(f"{CRE}{str(e).replace('`', "'")}{CNC}\n")
         elif os.path.isdir(item_path):
-            loaded_cnt += load_debug_symbols(item_path)
+            loaded_cnt += load_debug_symbols(item_path) or 0
     return loaded_cnt
 
 
@@ -57,6 +61,19 @@ class LoadSymbolsCommand(gdb.Command):
 
         path = os.path.abspath(args.path)
 
+        if os.path.isfile(path) and path.endswith((".debug", ".so", ".sym")):
+            loaded_cnt = 0
+
+            try:
+                gdb.execute(f"add-symbol-file {path}", to_string=True)
+                gdb.write(f"{CGR}Loaded symbols from {CPR}'{path}'{CNC}\n")
+
+                loaded_cnt = 1
+            except gdb.error as e:
+                gdb.write(f"{CRE}{str(e).replace('`', "'")}{CNC}\n")
+            gdb.write(f"{CAQ}Total loaded {CYW}{loaded_cnt} {CAQ}symbol file.{CNC}\n")
+            return
+
         if not os.path.isdir(path):
             gdb.write(
                 f"""{CRE}load-symbols: path does not exist: {CPR}'{path}'
@@ -67,7 +84,9 @@ class LoadSymbolsCommand(gdb.Command):
 
         loaded_cnt = load_debug_symbols(path)
 
-        if loaded_cnt == 0:
+        if loaded_cnt is None:
+            return
+        elif loaded_cnt == 0:
             gdb.write(f"{CYW}No symbol files were found in: {CPR}'{path}'{CNC}\n")
         else:
             gdb.write(f"{CAQ}Total loaded {CYW}{loaded_cnt} {CAQ}symbol files.{CNC}\n")
