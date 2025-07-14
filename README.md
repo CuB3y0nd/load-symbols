@@ -18,9 +18,8 @@ Also, `gdb` can only load symbol file one by one through `add-symbol-file`, whic
 
 ## :dart: Features
 
-- Load single debug symbol
-- Iterative walks directories like a bloodhound
 - Loads `.debug`, `.so`, `.sym` etc. symbol files into GDB
+- Iterative walks directories like a bloodhound
 - Gives you colorful, pwndbg-style, comforting output (debugging is painful enough already)
 - Gracefully handles bad paths and unreadable files
 - Won't judge your folder structure
