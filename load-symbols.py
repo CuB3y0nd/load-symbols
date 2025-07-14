@@ -5,14 +5,14 @@ import os
 
 import gdb
 
-CRE = "\x1b[0;31m"
-CGR = "\x1b[0;32m"
-CYW = "\x1b[0;33m"
-CPR = "\x1b[0;35m"
-CAQ = "\x1b[0;36m"
-CNC = "\x1b[0m"
+RED = "\x1b[0;31m"
+GRE = "\x1b[0;32m"
+YEL = "\x1b[0;33m"
+PUR = "\x1b[0;35m"
+AQU = "\x1b[0;36m"
+RST = "\x1b[0m"
 
-# Supported file extensions
+# supported file extensions
 SUPPORTED_EXTS = (".debug", ".so", ".sym")
 
 PARSER = argparse.ArgumentParser(
@@ -26,31 +26,29 @@ def try_load_symbol(path: str):
     """Try loading a single symbol file. Returns 1 if successful, 0 otherwise."""
     try:
         gdb.execute(f"add-symbol-file {path}", to_string=True)
-        gdb.write(f"{CGR}Loaded symbols from {CPR}'{path}'{CNC}\n")
+        gdb.write(f"{GRE}Loaded symbols from {PUR}'{path}'{RST}\n")
         return 1
     except gdb.error as e:
-        gdb.write(f"{CRE}{str(e).replace('`', "'")}{CNC}\n")
+        gdb.write(f"{RED}{str(e).replace('`', "'")}{RST}\n")
         return 0
 
 
-def load_debug_symbols_recursive(path: str):
-    """Recursively load all supported symbol files in the directory."""
-    try:
-        items = os.listdir(path)
-    except Exception as e:
-        gdb.write(f"""{CRE}Cannot list directory: {e}{CNC}
-{CYW}No debug symbols are loaded.{CNC}
-""")
-        return None
+def load_symbols(path):
+    """Iterate with os.walk"""
+    loaded = 0
 
-    count = 0
-    for item in items:
-        full_path = os.path.join(path, item)
-        if os.path.isfile(full_path) and full_path.endswith(SUPPORTED_EXTS):
-            count += try_load_symbol(full_path)
-        elif os.path.isdir(full_path):
-            count += load_debug_symbols_recursive(full_path) or 0
-    return count
+    try:
+        for root, _, files in os.walk(path):
+            for fname in files:
+                if fname.endswith(SUPPORTED_EXTS):
+                    full_path = os.path.join(root, fname)
+                    loaded += try_load_symbol(full_path)
+    except KeyboardInterrupt:
+        gdb.write(
+            f"{YEL}\nInterrupted by user. Loaded {AQU}{loaded}{YEL} files so far.{RST}\n"
+        )
+        return None
+    return loaded
 
 
 class LoadSymbolsCommand(gdb.Command):
@@ -65,33 +63,29 @@ class LoadSymbolsCommand(gdb.Command):
 
         path = os.path.abspath(args.path)
 
-        # Single file case
+        # single file case
         if os.path.isfile(path):
             if path.endswith(SUPPORTED_EXTS):
                 count = try_load_symbol(path)
-                gdb.write(f"{CAQ}Total loaded {CYW}{count} {CAQ}symbol file.{CNC}\n")
+                gdb.write(f"{AQU}Total loaded {YEL}{count}{AQU} symbol file.{RST}\n")
             else:
-                gdb.write(f"{CYW}Unsupported file type: {CPR}'{path}'{CNC}\n")
+                gdb.write(f"{YEL}Unsupported file type: {PUR}'{path}'{RST}\n")
             return
 
-        # Invalid path
+        # invalid path
         if not os.path.isdir(path):
-            gdb.write(
-                f"""{CRE}load-symbols: path does not exist: {CPR}'{path}'{CNC}
-{CYW}No debug symbols are loaded.{CNC}
-"""
-            )
+            gdb.write(f"{RED}load-symbols: path does not exist: {PUR}'{path}'{RST}\n")
             return
 
-        # Directory case
-        count = load_debug_symbols_recursive(path)
+        # directory case
+        total = load_symbols(path)
 
-        if count is None:
+        if total is None:
             return
-        if count == 0:
-            gdb.write(f"{CYW}No symbol files were found in: {CPR}'{path}'{CNC}\n")
+        if total == 0:
+            gdb.write(f"{YEL}No symbol files were found in: {PUR}'{path}'{RST}\n")
         else:
-            gdb.write(f"{CAQ}Total loaded {CYW}{count} {CAQ}symbol files.{CNC}\n")
+            gdb.write(f"{AQU}Total loaded {YEL}{total}{AQU} symbol files.{RST}\n")
 
 
 LoadSymbolsCommand()
