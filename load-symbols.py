@@ -53,20 +53,21 @@ def try_load(path: str) -> int:
 
     try:
         gdb.execute(f"add-symbol-file {path}", to_string=True)
-        gdb.write(f"{Color.GRE}Loaded {Color.PUR}{path}{Color.RST}\n")
+        gdb.write(f"{Color.GRE}Loaded {Color.PUR}'{path}'{Color.RST}\n")
         _loaded.add(real_path)
         return 1
     except gdb.error as e:
-        gdb.write(f"{Color.RED}{e}{Color.RST}\n")
+        gdb.write(f"{Color.RED}{str(e).replace('`', "'")}{Color.RST}\n")
         return 0
 
 
-def load_dir(dir: str, exts: tuple[str, ...]) -> int:
+def load_dir(dir: str, exts: tuple[str, ...]) -> tuple[int, int]:
     """
     Walk the directory tree and load all matching files.
     Returns the number of successfully‑loaded files.
     """
-    loaded, denied = 0, []
+    new_loaded, skipped = 0, 0
+    denied = []
 
     def on_err(err):
         if isinstance(err, PermissionError):
@@ -76,14 +77,20 @@ def load_dir(dir: str, exts: tuple[str, ...]) -> int:
         for root, _, files in os.walk(dir, onerror=on_err):
             for f in files:
                 if f.endswith(exts):
-                    loaded += try_load(os.path.join(root, f))
+                    path = os.path.join(root, f)
+                    real_path = os.path.abspath(path)
+                    if real_path in _loaded:
+                        skipped += 1
+                    else:
+                        if try_load(path):
+                            new_loaded += 1
     except KeyboardInterrupt:
-        return loaded
+        return new_loaded, skipped
 
     if denied:
         for d in denied:
             gdb.write(f"{Color.RED}Permission denied: {d}{Color.RST}\n")
-    return loaded
+    return new_loaded, skipped
 
 
 class LoadSymbolsCommand(gdb.Command):
@@ -109,31 +116,37 @@ class LoadSymbolsCommand(gdb.Command):
                 )
             else:
                 gdb.write(
-                    f"{Color.YEL}Unsupported file: {Color.PUR}{path}{Color.RST}\n"
+                    f"{Color.YEL}Unsupported file: {Color.PUR}'{path}'{Color.RST}\n"
                 )
             return
 
         # not a dir
         if not os.path.isdir(path):
             gdb.write(
-                f"{Color.RED}load-symbols: no such path: {Color.PUR}{path}{Color.RST}\n"
+                f"{Color.RED}load-symbols: no such path: {Color.PUR}'{path}'{Color.RST}\n"
             )
             return
 
         # dir but no access at all
         if not os.access(path, os.R_OK | os.X_OK):
-            gdb.write(f"{Color.RED}Permission denied: {path}{Color.RST}\n")
+            gdb.write(f"{Color.RED}Permission denied: '{path}'{Color.RST}\n")
             return
 
-        total = load_dir(path, exts)
-        if total == 0:
-            gdb.write(
-                f"{Color.YEL}No symbol files were loaded from: "
-                f"{Color.PUR}{path}{Color.RST}\n"
-            )
+        total_loaded, total_skipped = load_dir(path, exts)
+        if total_loaded == 0:
+            if total_skipped > 0:
+                gdb.write(
+                    f"{Color.YEL}All symbol files in {Color.PUR}'{path}'{Color.YEL} "
+                    f"have already been loaded.{Color.RST}\n"
+                )
+            else:
+                gdb.write(
+                    f"{Color.YEL}No symbol files were loaded from: "
+                    f"{Color.PUR}'{path}'{Color.RST}\n"
+                )
         else:
             gdb.write(
-                f"\n{Color.YEL}Total loaded {Color.AQU}{total}"
+                f"\n{Color.YEL}Total loaded {Color.AQU}{total_loaded}"
                 f"{Color.YEL} symbol files.{Color.RST}\n"
             )
 
