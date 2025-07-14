@@ -18,6 +18,8 @@ class Color:
 # default supported file extensions
 DEFAULT_EXTS: set[str] = {".debug", ".so", ".sym"}
 
+_loaded: set[str] = set()  # avoid duplicates
+
 PARSER = argparse.ArgumentParser(
     prog="load-symbols",
     description="Recursively load all symbol files from a directory or load a single symbol file.",
@@ -44,9 +46,15 @@ def parse_extensions(s: str) -> tuple[str, ...]:
 
 def try_load(path: str) -> int:
     """Load a single symbol file."""
+    real_path = os.path.abspath(path)
+
+    if real_path in _loaded:
+        return 0
+
     try:
         gdb.execute(f"add-symbol-file {path}", to_string=True)
         gdb.write(f"{Color.GRE}Loaded {Color.PUR}{path}{Color.RST}\n")
+        _loaded.add(real_path)
         return 1
     except gdb.error as e:
         gdb.write(f"{Color.RED}{e}{Color.RST}\n")
@@ -70,10 +78,6 @@ def load_dir(dir: str, exts: tuple[str, ...]) -> int:
                 if f.endswith(exts):
                     loaded += try_load(os.path.join(root, f))
     except KeyboardInterrupt:
-        gdb.write(
-            f"{Color.YEL}\nInterrupted. Loaded "
-            f"{Color.AQU}{loaded}{Color.YEL} so far.{Color.RST}\n"
-        )
         return loaded
 
     if denied:
@@ -129,7 +133,7 @@ class LoadSymbolsCommand(gdb.Command):
             )
         else:
             gdb.write(
-                f"{Color.YEL}Total loaded {Color.AQU}{total}"
+                f"\n{Color.YEL}Total loaded {Color.AQU}{total}"
                 f"{Color.YEL} symbol files.{Color.RST}\n"
             )
 
