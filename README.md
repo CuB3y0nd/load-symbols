@@ -2,6 +2,8 @@
 
 *A tiny GDB plugin that bravely ventures into the filesystem to bring you debug symbols from the depths of your `.debug` directories.*
 
+<img width="1920" height="1080" alt="Shot-2025-07-14-214912" src="https://github.com/user-attachments/assets/23d7e3fa-4612-49e1-9b24-b99038f0c3f4" />
+
 ## :thinking: What is this?
 
 `load-symbols` is a lightweight, no-nonsense GDB Python command that iterative loads symbol files from a directory and its subdirectories.
