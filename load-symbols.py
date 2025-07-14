@@ -5,49 +5,80 @@ import os
 
 import gdb
 
-RED = "\x1b[0;31m"
-GRE = "\x1b[0;32m"
-YEL = "\x1b[0;33m"
-PUR = "\x1b[0;35m"
-AQU = "\x1b[0;36m"
-RST = "\x1b[0m"
 
-# supported file extensions
-SUPPORTED_EXTS = (".debug", ".so", ".sym")
+class Color:
+    RED = "\x1b[0;31m"
+    GRE = "\x1b[0;32m"
+    YEL = "\x1b[0;33m"
+    PUR = "\x1b[0;35m"
+    AQU = "\x1b[0;36m"
+    RST = "\x1b[0m"
+
+
+# default supported file extensions
+DEFAULT_EXTS: set[str] = {".debug", ".so", ".sym"}
 
 PARSER = argparse.ArgumentParser(
     prog="load-symbols",
     description="Recursively load all symbol files from a directory or load a single symbol file.",
 )
 PARSER.add_argument("path", help="Path to a symbol file or directory.")
+PARSER.add_argument(
+    "--ext",
+    help="Extra extensions, comma‑separated (e.g. --ext=.dbg,.elf)",
+    default="",
+)
 
 
-def try_load_symbol(path: str):
-    """Try loading a single symbol file. Returns 1 if successful, 0 otherwise."""
+def parse_extensions(s: str) -> tuple[str, ...]:
+    """
+    Combine default extensions with user‑supplied ones.
+    Ensures each ext starts with '.' and removes duplicates.
+    """
+    exts = set(DEFAULT_EXTS)
+    for ext in (e.strip() for e in s.split(",")):
+        if ext:
+            exts.add(ext if ext.startswith(".") else "." + ext)
+    return tuple(exts)
+
+
+def try_load(path: str) -> int:
+    """Load a single symbol file."""
     try:
         gdb.execute(f"add-symbol-file {path}", to_string=True)
-        gdb.write(f"{GRE}Loaded symbols from {PUR}'{path}'{RST}\n")
+        gdb.write(f"{Color.GRE}Loaded {Color.PUR}{path}{Color.RST}\n")
         return 1
     except gdb.error as e:
-        gdb.write(f"{RED}{str(e).replace('`', "'")}{RST}\n")
+        gdb.write(f"{Color.RED}{e}{Color.RST}\n")
         return 0
 
 
-def load_symbols(path):
-    """Iterate with os.walk"""
-    loaded = 0
+def load_dir(dir: str, exts: tuple[str, ...]) -> int:
+    """
+    Walk the directory tree and load all matching files.
+    Returns the number of successfully‑loaded files.
+    """
+    loaded, denied = 0, []
+
+    def on_err(err):
+        if isinstance(err, PermissionError):
+            denied.append(err.filename)
 
     try:
-        for root, _, files in os.walk(path):
-            for fname in files:
-                if fname.endswith(SUPPORTED_EXTS):
-                    full_path = os.path.join(root, fname)
-                    loaded += try_load_symbol(full_path)
+        for root, _, files in os.walk(dir, onerror=on_err):
+            for f in files:
+                if f.endswith(exts):
+                    loaded += try_load(os.path.join(root, f))
     except KeyboardInterrupt:
         gdb.write(
-            f"{YEL}\nInterrupted by user. Loaded {AQU}{loaded}{YEL} files so far.{RST}\n"
+            f"{Color.YEL}\nInterrupted. Loaded "
+            f"{Color.AQU}{loaded}{Color.YEL} so far.{Color.RST}\n"
         )
-        return None
+        return loaded
+
+    if denied:
+        for d in denied:
+            gdb.write(f"{Color.RED}Permission denied: {d}{Color.RST}\n")
     return loaded
 
 
@@ -62,30 +93,45 @@ class LoadSymbolsCommand(gdb.Command):
             return
 
         path = os.path.abspath(args.path)
+        exts = parse_extensions(args.ext)
 
-        # single file case
+        # single file
         if os.path.isfile(path):
-            if path.endswith(SUPPORTED_EXTS):
-                count = try_load_symbol(path)
-                gdb.write(f"{AQU}Total loaded {YEL}{count}{AQU} symbol file.{RST}\n")
+            if path.endswith(exts):
+                total = try_load(path)
+                gdb.write(
+                    f"{Color.YEL}Total loaded {Color.AQU}{total}"
+                    f"{Color.YEL} symbol file.{Color.RST}\n"
+                )
             else:
-                gdb.write(f"{YEL}Unsupported file type: {PUR}'{path}'{RST}\n")
+                gdb.write(
+                    f"{Color.YEL}Unsupported file: {Color.PUR}{path}{Color.RST}\n"
+                )
             return
 
-        # invalid path
+        # not a dir
         if not os.path.isdir(path):
-            gdb.write(f"{RED}load-symbols: path does not exist: {PUR}'{path}'{RST}\n")
+            gdb.write(
+                f"{Color.RED}load-symbols: no such path: {Color.PUR}{path}{Color.RST}\n"
+            )
             return
 
-        # directory case
-        total = load_symbols(path)
-
-        if total is None:
+        # dir but no access at all
+        if not os.access(path, os.R_OK | os.X_OK):
+            gdb.write(f"{Color.RED}Permission denied: {path}{Color.RST}\n")
             return
+
+        total = load_dir(path, exts)
         if total == 0:
-            gdb.write(f"{YEL}No symbol files were found in: {PUR}'{path}'{RST}\n")
+            gdb.write(
+                f"{Color.YEL}No symbol files were loaded from: "
+                f"{Color.PUR}{path}{Color.RST}\n"
+            )
         else:
-            gdb.write(f"{AQU}Total loaded {YEL}{total}{AQU} symbol files.{RST}\n")
+            gdb.write(
+                f"{Color.YEL}Total loaded {Color.AQU}{total}"
+                f"{Color.YEL} symbol files.{Color.RST}\n"
+            )
 
 
 LoadSymbolsCommand()
